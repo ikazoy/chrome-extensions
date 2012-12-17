@@ -9,79 +9,144 @@
 
 気にすること：
 ローカルストレージのexpireについて
-一番最初の起動時にどうやってイベントを発火させるのか、そもそもずっとjsを動かすということをどうするのか（manifest.jsonに書けばいいかもしれない）
+一番最初の起動時にどうやってイベントを発火させるのか
 
 実装方針：
 タブが切り替わったタイミングで、そのタブ番号を順番に記録
 そして、このアドオンが呼ばれたらローカルストレージを参照して、タブ番号を読み取り、そのタブを表示させる
 */
 
+// 最初の読み込み
+chrome.windows.getLastFocused(function(window){
+	console.log("onload");
+	onWindowChanged(window.id);
+});
+
 localStorage.clear();
+
+// 定数
+var hist_key = "tab_hist";
+var check_key = "current";
+
+// ショートカットキー受付
+chrome.extension.onConnect.addListener(function(port) {
+
+	// 今何番目 index の履歴を参照しているか int
+	var current_num;
+
+	console.log(port.name);
+	console.log("onConnect");
+	port.onMessage.addListener(function(msg) {
+		if (msg.msg == "key pressed") {
+			// 最初の入力
+			if (!localStorage[check_key]) {
+				current_num = localStorage[hist_key].split(",").length - 1;
+			} else {
+				current_num = localStorage[check_key];
+			}
+			// 次のために記録
+			var target_num = localStorage[check_key] = current_num - 1;
+
+			// TODO:タブの存在チェック
+			// もしタブがなければ、履歴からそのIDを全て消去、currentも減らして次のタブを呼び出す（ループにならないか？）
+			
+			// TODO:一番最初に戻ってきたとき=indexが0のときの処理
+
+			// 移動
+			var target_info = localStorage[hist_key].split(",")[target_num].split(":");
+			var target_tabid = Number(target_info[1]);
+			var target_windowid = Number(target_info[0]);
+
+			console.log("moving to" + target_tabid + ":" + target_windowid);
+			chrome.tabs.get(target_tabid, function(tab) {
+				console.log("got tabinfo");
+				console.debug(tab);
+				chrome.tabs.highlight({tabs: tab.index, windowId: tab.windowId}, function(){});
+				console.log(tab.windowId);
+				console.log("1");
+				chrome.windows.update(tab.windowId, {focused: true});
+				console.log("2");
+			});
+		}
+	});
+});
 
 // タブが切り替わった際のイベント
 chrome.tabs.onSelectionChanged.addListener(function(tabId, info) {
-	var total = localStorage.length;
-	console.log("tab changed:" + total);
-	console.log("total:" + total);
-	var cur_num = total + 1;
-	localStorage[getKeyname(cur_num)] = buildValue(info.windowId, tabId);
-})
-/*
-chrome.tabs.onActivated.addListener(function(info) {
-	var total = localStorage.length;
-	console.log("tab changed:" + total);
-	console.log("total:" + total);
-	var cur_num = total + 1;
-	localStorage[getKeyname(cur_num)] = buildValue(info.windowId, info.tabId);
-})
-*/
+
+	// 通常の遷移かアドオンによる遷移かを判定
+	var prev_target_num = localStorage[check_key];
+	// アドオンによる遷移
+	if (localStorage[hist_key] && localStorage[hist_key].split(",")[prev_target_num] == buildValue(info.windowId, tabId)) {
+		console.log("tab changed by extension");
+		return;
+	// 通常遷移
+	} else {
+		if(localStorage[hist_key]) {
+			console.log("origin:" + localStorage[hist_key].split(",")[prev_target_num]);
+			console.log("now:" + buildValue(info.windowId, tabId));
+			console.log("tab changed.");
+		}
+		// 毎回消す
+		localStorage.removeItem(check_key);
+
+		if (localStorage[hist_key]) {
+			localStorage[hist_key] = localStorage[hist_key] + "," + buildValue(info.windowId, tabId);
+		} else {
+			localStorage[hist_key] = buildValue(info.windowId, tabId);
+		}
+	}
+});
 
 function getTabsByQuery(queryInfo,callback) {
-	console.log("1.2 start getTabsByQuery");
+	//console.log("1.2 start getTabsByQuery");
 	chrome.tabs.query(queryInfo, function(tabs) {
 		// tabsは1つしかないはず
-		console.log("2" + tabs);
-		console.log("3" + tabs[0]);
-		console.log("4 tabid:" + tabs[0].id);
+		//console.log("2" + tabs);
+		//console.log("3" + tabs[0]);
+		//console.log("4 tabid:" + tabs[0].id);
 		callback(tabs[0].id);
-	})
+	});
 }
 
 // ウィンドウが切り替わった際のイベント
-chrome.windows.onFocusChanged.addListener(function(_windowId) {
+chrome.windows.onFocusChanged.addListener(function onWindowChanged(_windowId) {
+
 	// windowIdが-1の場合は他のアプリケーションなので無視
 	if (_windowId == -1) {
-	//if (1) {
 		return;
 	}
 
-	var total = localStorage.length;
+	/*
 	// ローカルストレージ何もなければ無視
-	if (total == 0) {
+	if (!localStorage[hist_key]) {
 		return;
 	}
-	console.log("1 window changed:" + total);
-	var cur_num = total + 1;
+	*/
    
 	var queryInfo = {
 		active: true,
 		windowId: _windowId
 	};
-	console.log("1.1 call getTabsByQuery");
 	// 順番を保障したいので、チェーンさせる（あってるのか、、、）
 	getTabsByQuery(queryInfo, function(tabId){
-		console.log("5 tabId:" + tabId);
-		console.log("6 origin:" + localStorage[getKeyname(total)]);
-		console.log("7 current:" + buildValue(_windowId, tabId));
-		if (localStorage[getKeyname(total)] == buildValue(_windowId, tabId)) {
-				console.log("8 the same!");
+		//console.log("5 tabId:" + tabId);
+		//console.log("6 origin:" + localStorage[getKeyname(total)]);
+		//console.log("7 current:" + buildValue(_windowId, tabId));
+		if(localStorage[hist_key] && (localStorage[hist_key].split(",").last() == buildValue(_windowId, tabId))) {
+				console.log("the same!");
 		} else {
-				console.log("9 Actually window changed!");
-				localStorage[getKeyname(cur_num)] = buildValue(_windowId, tabId);
+				console.log("Actually window changed!");
+				if (localStorage[hist_key]) {
+					localStorage[hist_key] = localStorage[hist_key] + "," + buildValue(_windowId, tabId);
+				} else {
+					console.log("first time:" + _windowId + "/" + tabId); 
+					localStorage[hist_key] = buildValue(_windowId, tabId);
+				}
 		}
 	});
 
-})
+});
 
 function buildValue(windowId, tabId){
 	return windowId + ":" + tabId;
@@ -90,48 +155,3 @@ function buildValue(windowId, tabId){
 function getKeyname(num) {
 	return "tabinfo" + num;
 }
-
-
-
-
-
-
-
-
-
-// サンプルコード
-/*
-var req = new XMLHttpRequest();
-req.open(
-	"GET",
-	"http://api.flickr.com/services/rest/?" +
-		"method=flickr.photos.search&" +
-		"api_key=90485e931f687a9b9c2a66bf58a3861a&" +
-		"text=hello%20world&" +
-		"safe_search=1&" +  // 1 is "safe"
-		"content_type=1&" +  // 1 is "photos only"
-		"sort=relevance&" +  // another good one is "interestingness-desc"
-		"per_page=20",
-	true);
-req.onload = showPhotos;
-req.send(null);
-
-function showPhotos() {
-  var photos = req.responseXML.getElementsByTagName("photo");
-
-  for (var i = 0, photo; photo = photos[i]; i++) {
-	var img = document.createElement("image");
-	img.src = constructImageURL(photo);
-	document.body.appendChild(img);
-  }
-}
-
-// See: http://www.flickr.com/services/api/misc.urls.html
-function constructImageURL(photo) {
-  return "http://farm" + photo.getAttribute("farm") +
-	  ".static.flickr.com/" + photo.getAttribute("server") +
-	  "/" + photo.getAttribute("id") +
-	  "_" + photo.getAttribute("secret") +
-	  "_s.jpg";
-}
-*/
