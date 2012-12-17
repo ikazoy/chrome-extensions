@@ -6,6 +6,10 @@
   "permissions": [
     "tabs"
   ],
+  "background": {
+	  "page": "popup.html",
+	  "persistent": false
+  },
   "content_scripts": [{
     "js": [ "content_script.js" ],
 	"matches": [ "<all_urls>" ],
