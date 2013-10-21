@@ -26,7 +26,7 @@ localStorage.clear();
 
 // 定数
 var hist_key = "tab_hist";
-var check_key = "current";
+var current_key = "current";
 
 // ショートカットキー受付
 chrome.extension.onConnect.addListener(function(port) {
@@ -39,13 +39,13 @@ chrome.extension.onConnect.addListener(function(port) {
 	port.onMessage.addListener(function(msg) {
 		if (msg.msg == "key pressed") {
 			// 最初の入力
-			if (!localStorage[check_key]) {
+			if (!localStorage[current_key]) {
 				current_num = localStorage[hist_key].split(",").length - 1;
 			} else {
-				current_num = localStorage[check_key];
+				current_num = localStorage[current_key];
 			}
 			// 次のために記録
-			var target_num = localStorage[check_key] = current_num - 1;
+			var target_num = localStorage[current_key] = current_num - 1;
 
 			// TODO:タブの存在チェック
 			// もしタブがなければ、履歴からそのIDを全て消去、currentも減らして次のタブを呼び出す（ループにならないか？）
@@ -75,7 +75,7 @@ chrome.extension.onConnect.addListener(function(port) {
 chrome.tabs.onSelectionChanged.addListener(function(tabId, info) {
 
 	// 通常の遷移かアドオンによる遷移かを判定
-	var prev_target_num = localStorage[check_key];
+	var prev_target_num = localStorage[current_key];
 	// アドオンによる遷移
 	if (localStorage[hist_key] && localStorage[hist_key].split(",")[prev_target_num] == buildValue(info.windowId, tabId)) {
 		console.log("tab changed by extension");
@@ -88,7 +88,7 @@ chrome.tabs.onSelectionChanged.addListener(function(tabId, info) {
 			console.log("tab changed.");
 		}
 		// 毎回消す
-		localStorage.removeItem(check_key);
+		localStorage.removeItem(current_key);
 
 		if (localStorage[hist_key]) {
 			localStorage[hist_key] = localStorage[hist_key] + "," + buildValue(info.windowId, tabId);
