@@ -13,7 +13,7 @@ window.addEventListener('keydown',  function(e) {
 	// TODO:ショートカットキーの設定を取得する処理
 	// TODO:ショートカットキーの設定を変更する処理
 	if (!e.altKey && e.shiftKey && e.ctrlKey && e.keyCode == 76) { // Ctrl + Shift + L
-		alert ("Shortcut Key Pressed");
+		// alert ("Shortcut Key Pressed");
 		var port = chrome.extension.connect({name: "keypressed"});
 		port.postMessage({msg: "key pressed"});
 		port.onMessage.addListener(function(msg) {
